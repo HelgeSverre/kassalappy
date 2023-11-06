@@ -9,11 +9,11 @@ class HttpException(Exception):
         self,
         status: int,
         message: str = "HTTP error",
-        extension_code: str = API_ERR_CODE_UNKNOWN,
+        errors: dict[str, str] | None = None,
     ):
         self.status = status
         self.message = message
-        self.extension_code = extension_code
+        self.errors = errors
         super().__init__(self.message)
 
 
@@ -22,3 +22,6 @@ class FatalHttpException(HttpException):
 
 class RetryableHttpException(HttpException):
     """Exception raised for HTTP codes that are possible to retry."""
+
+class AuthorizationError(FatalHttpException):
+    """Invalid login exception."""

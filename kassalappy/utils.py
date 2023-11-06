@@ -3,15 +3,21 @@ from __future__ import annotations
 
 import logging
 import re
-
 import aiohttp
+
+from http import HTTPStatus
 
 from .const import (
     API_ERR_CODE_UNKNOWN,
+    HTTP_CODES_NO_ACCESS,
     HTTP_CODES_FATAL,
     HTTP_CODES_RETRYABLE,
 )
-from .exceptions import FatalHttpException, RetryableHttpException
+from .exceptions import (
+    AuthorizationError,
+    FatalHttpException,
+    RetryableHttpException,
+)
 from .models import (
     KassalappResource,
     ShoppingList,
@@ -53,7 +59,7 @@ async def extract_response_data(
 
     result = await response.json()
     if response.ok:
-        data = result.get("data")
+        data = result.get("data") or result
         if map_to_model:
             model = path_to_model(response.url.path)
             if isinstance(data, list):
@@ -61,22 +67,27 @@ async def extract_response_data(
             return model(**data)
         return data
 
-    if response.status in HTTP_CODES_RETRYABLE:
-        error_message = result.get("message")
+    error_message = result.get("message")
+    errors = result.get("errors", {})
 
-        raise RetryableHttpException(
-            response.status, message=error_message
-        )
-
-    if response.status in HTTP_CODES_FATAL:
-        error_message = result.get("message", "")
-        # if error_code == API_ERR_CODE_UNAUTH:
-        #     raise InvalidLogin(response.status, error_message)
-
+    if response.status == HTTPStatus.NOT_FOUND:
         raise FatalHttpException(response.status, error_message)
 
-    error_message = result.get("mesasge", "")
+    if response.status == HTTPStatus.UNPROCESSABLE_ENTITY:
+        raise FatalHttpException(response.status, error_message, errors)
+
+    if response.status in HTTP_CODES_NO_ACCESS:
+        raise AuthorizationError(response.status, error_message, errors)
+
+    if response.status in HTTP_CODES_RETRYABLE:
+        raise RetryableHttpException(response.status, error_message)
+
+    if response.status in HTTP_CODES_FATAL:
+        raise FatalHttpException(response.status, error_message, errors)
+
     # if reached here the HTTP response code is not currently handled
     raise FatalHttpException(
-        response.status, f"Unhandled error: {error_message}"
+        response.status,
+        f"Unhandled error: {error_message}",
+        errors,
     )

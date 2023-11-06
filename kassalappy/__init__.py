@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Literal
 
 import aiohttp
 import async_timeout
@@ -47,11 +47,11 @@ class Kassalapp:
         self,
         endpoint: str,
         method: str = aiohttp.hdrs.METH_GET,
-        params: dict[str, Any] | None = None,
-        data: dict[Any, Any] | None = None,
+        params: dict[str, any] | None = None,
+        data: dict[any, any] | None = None,
         timeout: int | None = None,
         map_to_model: bool = False,
-    ) -> dict[Any, Any] | KassalappResource | list[KassalappResource] | None:
+    ) -> dict[any, any] | KassalappResource | list[KassalappResource] | None:
         """"Execute a API request and return the data."""
         timeout = timeout or self.timeout
 
@@ -76,9 +76,14 @@ class Kassalapp:
                 _LOGGER.exception("Error connecting to kassalapp")
             raise
 
+    async def healthy(self):
+        """Check if the Kassalapp API is working."""
+        result = await self.execute("health")
+        return result.get("message") == "Healthy"
+
     async def get_shopping_lists(self):
         """Get shopping lists."""
-        return await self.execute(f"shopping-lists")
+        return await self.execute("shopping-lists")
 
     async def get_shopping_list(self, list_id: int, include_items: bool = False):
         """Get a shopping list."""
