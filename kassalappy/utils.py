@@ -38,8 +38,12 @@ def path_to_model(req_path: str) -> type[KassalappResource] | None:
 async def extract_response_data(
     response: aiohttp.ClientResponse,
     map_to_model: bool = False,
-) -> dict[any, any] | KassalappResource | list[KassalappResource]:
+) -> dict[any, any] | KassalappResource | list[KassalappResource] | None:
     """Extract the response as JSON and map to appropriate dataclass."""
+    if response.ok and response.content_length == 0:
+        _LOGGER.debug("Got an empty OK-like response, returning.")
+        return
+
     if response.content_type != "application/json":
         raise FatalHttpException(
             response.status,
@@ -48,7 +52,6 @@ async def extract_response_data(
         )
 
     result = await response.json()
-
     if response.ok:
         data = result.get("data")
         if map_to_model:
