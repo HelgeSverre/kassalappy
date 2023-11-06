@@ -1,8 +1,6 @@
 """Kassalapp utils."""
 from __future__ import annotations
 
-from typing import Type
-from http import HTTPStatus
 import logging
 import re
 
@@ -51,7 +49,7 @@ async def extract_response_data(
 
     result = await response.json()
 
-    if response.status == HTTPStatus.OK:
+    if response.ok:
         data = result.get("data")
         if map_to_model:
             model = path_to_model(response.url.path)
