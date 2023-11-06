@@ -80,9 +80,12 @@ class Kassalapp:
         """Get shopping lists."""
         return await self.execute(f"shopping-lists")
 
-    async def get_shopping_list(self, list_id: int):
+    async def get_shopping_list(self, list_id: int, include_items: bool = False):
         """Get a shopping list."""
-        return await self.execute(f"shopping-lists/{list_id}")
+        params = {}
+        if include_items:
+            params["include"] = "items"
+        return await self.execute(f"shopping-lists/{list_id}", params=params)
 
     async def create_shopping_list(self, title: str):
         """Create a new shopping list."""
@@ -98,7 +101,7 @@ class Kassalapp:
 
     async def get_shopping_list_items(self, list_id: int):
         """Shorthand method to get all items from a shopping list."""
-        shopping_list = await self.get_shopping_list(list_id)
+        shopping_list = await self.get_shopping_list(list_id, include_items=True)
         return shopping_list.get("items", [])
 
     async def add_shopping_list_item(self, list_id: int, text: str, product_id: int | None = None):
