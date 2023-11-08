@@ -1,22 +1,44 @@
 """Library to handle connection with kassalapp web API."""
 from __future__ import annotations
 
-import asyncio
+from http import HTTPStatus
+import json
 import logging
-from typing import TYPE_CHECKING, Literal
+from types import NoneType
+from typing import Literal, TypeVar, cast
 
 import aiohttp
 import async_timeout
+from pydantic import ValidationError
+from typing_extensions import ParamSpec
 
 from .const import (
     API_ENDPOINT,
     DEFAULT_TIMEOUT,
     VERSION,
 )
-from .utils import extract_response_data
+from .exceptions import (
+    APIStatusError,
+    APITimeoutError,
+    AuthenticationError,
+    BadRequestError,
+    ConflictError,
+    InternalServerError,
+    NotFoundError,
+    PermissionDeniedError,
+    RateLimitError,
+    UnprocessableEntityError,
+)
+from .models import (
+    MessageResponse,
+    Product,
+    ShoppingList,
+    ShoppingListItem,
+)
+from .models.models import ResponseT, construct_type
 
-if TYPE_CHECKING:
-    from .models import KassalappResource
+P = ParamSpec("P")
+R = TypeVar("R")
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -43,15 +65,100 @@ class Kassalapp:
         """Close the client connection."""
         await self.websession.close()
 
+    async def _process_response(
+        self,
+        cast_to: type[ResponseT],
+        options: dict[str, any],
+        response: aiohttp.ClientResponse,
+    ) -> R:
+        response_data = await response.json()
+
+        if response.ok:
+            data = response_data.get("data") or response_data
+        else:
+            data = response_data
+
+        try:
+            return await self._process_response_data(
+                data=data,
+                cast_to=cast_to,
+            )
+        except ValidationError:
+            _LOGGER.exception("Error validating response data")
+            raise
+
+    async def _process_response_data(
+        self,
+        data: object,
+        cast_to: type[ResponseT],
+    ) -> ResponseT:
+        if cast_to is NoneType:
+            return cast(R, None)
+
+        if cast_to == str:
+            return cast(R, data)
+
+        if data is None:
+            return cast(ResponseT, None)
+
+        return cast(ResponseT, construct_type(type_=cast_to, value=data))
+
+    async def _make_status_error_from_response(
+        self,
+        response: aiohttp.ClientResponse,
+    ) -> APIStatusError:
+        err_text = await response.text()
+        body = err_text.strip()
+
+        try:
+            body = json.loads(err_text)
+            err_msg = f"Error code: {response.status} - {body}"
+        except Exception:  # noqa: BLE001
+            err_msg = err_text or f"Error code: {response.status}"
+
+        return await self._make_status_error(err_msg, body=body, response=response)
+
+    async def _make_status_error(  # noqa: PLR0911
+        self,
+        err_msg: str,
+        *,
+        body: object,
+        response: aiohttp.ClientResponse,
+    ) -> APIStatusError:
+        if response.status == HTTPStatus.BAD_REQUEST:
+            return BadRequestError(err_msg, response=response, body=body)
+
+        if response.status == HTTPStatus.UNAUTHORIZED:
+            return AuthenticationError(err_msg, response=response, body=body)
+
+        if response.status == HTTPStatus.FORBIDDEN:
+            return PermissionDeniedError(err_msg, response=response, body=body)
+
+        if response.status == HTTPStatus.NOT_FOUND:
+            return NotFoundError(err_msg, response=response, body=body)
+
+        if response.status == HTTPStatus.CONFLICT:
+            return ConflictError(err_msg, response=response, body=body)
+
+        if response.status == HTTPStatus.UNPROCESSABLE_ENTITY:
+            return UnprocessableEntityError(err_msg, response=response, body=body)
+
+        if response.status == HTTPStatus.TOO_MANY_REQUESTS:
+            return RateLimitError(err_msg, response=response, body=body)
+
+        if response.status >= HTTPStatus.INTERNAL_SERVER_ERROR:
+            return InternalServerError(err_msg, response=response, body=body)
+        return APIStatusError(err_msg, response=response, body=body)
+
     async def execute(
         self,
         endpoint: str,
+        cast_to: type[ResponseT],
         method: str = aiohttp.hdrs.METH_GET,
         params: dict[str, any] | None = None,
         data: dict[any, any] | None = None,
         timeout: int | None = None,
-        map_to_model: bool = False,
-    ) -> dict[any, any] | KassalappResource | list[KassalappResource] | None:
+    ) -> ResponseT:
         """"Execute a API request and return the data."""
         timeout = timeout or self.timeout
 
@@ -64,45 +171,51 @@ class Kassalapp:
             "params": params,
         }
         request_url = f"{API_ENDPOINT}/{endpoint}"
-
+        options = {}
         try:
             async with async_timeout.timeout(timeout):
-                resp = await self.websession.request(method, request_url, **request_args)
-                return await extract_response_data(resp, map_to_model)
-        except (aiohttp.ClientError, asyncio.TimeoutError) as err:
-            if isinstance(err, asyncio.TimeoutError):
-                _LOGGER.exception("Timed out when connecting to kassalapp")
-            else:
-                _LOGGER.exception("Error connecting to kassalapp")
-            raise
+                response = await self.websession.request(method, request_url, **request_args)
+                response.raise_for_status()
+        except aiohttp.ServerTimeoutError as err:
+            raise APITimeoutError(request=response.request_info) from err
+        except (aiohttp.ClientResponseError, aiohttp.ClientError):
+            raise self._make_status_error_from_response(response) from None
+
+        return await self._process_response(
+            cast_to=cast_to,
+            options=options,
+            response=response,
+        )
 
     async def healthy(self):
         """Check if the Kassalapp API is working."""
-        result = await self.execute("health")
-        return result.get("message") == "Healthy"
+        return await self.execute("health", MessageResponse)
 
-    async def get_shopping_lists(self):
+    async def get_shopping_lists(self, include_items: bool = False):
         """Get shopping lists."""
-        return await self.execute("shopping-lists")
+        params = {}
+        if include_items:
+            params["include"] = "items"
+        return await self.execute("shopping-lists", ShoppingList, params=params)
 
     async def get_shopping_list(self, list_id: int, include_items: bool = False):
         """Get a shopping list."""
         params = {}
         if include_items:
             params["include"] = "items"
-        return await self.execute(f"shopping-lists/{list_id}", params=params)
+        return await self.execute(f"shopping-lists/{list_id}", ShoppingList, params=params)
 
     async def create_shopping_list(self, title: str):
         """Create a new shopping list."""
-        return await self.execute("shopping-lists", "post", data={"title": title})
+        return await self.execute("shopping-lists", ShoppingList, "post", data={"title": title})
 
     async def delete_shopping_list(self, list_id: int):
         """Delete a shopping list."""
-        return await self.execute(f"shopping-lists/{list_id}", "delete")
+        return await self.execute(f"shopping-lists/{list_id}", ShoppingList, "delete")
 
     async def update_shopping_list(self, list_id: int, title: str):
         """Update a new shopping list."""
-        return await self.execute(f"shopping-lists/{list_id}", "patch", data={"title": title})
+        return await self.execute(f"shopping-lists/{list_id}", ShoppingList, "patch", data={"title": title})
 
     async def get_shopping_list_items(self, list_id: int):
         """Shorthand method to get all items from a shopping list."""
@@ -115,12 +228,13 @@ class Kassalapp:
             "text": text,
             "product_id": product_id,
         }
-        return await self.execute(f"shopping-lists/{list_id}/items", "post", data=item)
+        return await self.execute(f"shopping-lists/{list_id}/items", ShoppingListItem, "post", data=item)
 
     async def delete_shopping_list_item(self, list_id: int, item_id: int):
         """Remove an item from the shopping list."""
         return await self.execute(
             f"shopping-lists/{list_id}/items/{item_id}",
+            MessageResponse,
             "delete",
         )
 
@@ -138,6 +252,7 @@ class Kassalapp:
         }
         return await self.execute(
             f"shopping-lists/{list_id}/items/{item_id}",
+            ShoppingListItem,
             "patch",
             data={k: v for k, v in data.items() if v is not None},
         )
@@ -188,11 +303,19 @@ class Kassalapp:
             "unique": 1 if unique is True else None,
         }
 
-        return await self.execute("products", params={k: v for k, v in params.items() if v is not None})
+        return await self.execute(
+            "products",
+            Product,
+            params={k: v for k, v in params.items() if v is not None},
+        )
 
     async def product_find_by_url(self, url: str):
         """Will look up product information based on a URL."""
         params = {
             "url": url,
         }
-        return await self.execute("products/find-by-url/single", params=params)
+        return await self.execute(
+            "products/find-by-url/single",
+            Product,
+            params=params,
+        )
