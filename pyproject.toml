@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "kassalappy"
-version = "0.7.0"
+version = "0.8.0"
 description = ""
 authors = ["Bendik R. Brenne <bendik@konstant.no>"]
 license = "MIT"

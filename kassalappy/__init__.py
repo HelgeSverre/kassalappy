@@ -8,7 +8,6 @@ from types import NoneType
 from typing import Literal, TypeVar, cast
 
 import aiohttp
-import async_timeout
 from pydantic import ValidationError
 from typing_extensions import ParamSpec
 
@@ -103,11 +102,12 @@ class Kassalapp:
 
         return cast(ResponseT, construct_type(type_=cast_to, value=data))
 
-    async def _make_status_error_from_response(
+    def _make_status_error_from_response(
         self,
         response: aiohttp.ClientResponse,
+        err_text: str
     ) -> APIStatusError:
-        err_text = await response.text()
+        # err_text = await response.text()
         body = err_text.strip()
 
         try:
@@ -116,9 +116,9 @@ class Kassalapp:
         except Exception:  # noqa: BLE001
             err_msg = err_text or f"Error code: {response.status}"
 
-        return await self._make_status_error(err_msg, body=body, response=response)
+        return self._make_status_error(err_msg, body=body, response=response)
 
-    async def _make_status_error(  # noqa: PLR0911
+    def _make_status_error(  # noqa: PLR0911
         self,
         err_msg: str,
         *,
@@ -169,17 +169,19 @@ class Kassalapp:
             },
             "json": data,
             "params": params,
+            "timeout": aiohttp.ClientTimeout(total=timeout),
         }
         request_url = f"{API_ENDPOINT}/{endpoint}"
         options = {}
         try:
-            async with async_timeout.timeout(timeout):
-                response = await self.websession.request(method, request_url, **request_args)
+            async with self.websession as session:
+                response = await session.request(method, request_url, **request_args)
+                body = await response.text()
                 response.raise_for_status()
         except aiohttp.ServerTimeoutError as err:
             raise APITimeoutError(request=response.request_info) from err
         except (aiohttp.ClientResponseError, aiohttp.ClientError):
-            raise self._make_status_error_from_response(response) from None
+            raise self._make_status_error_from_response(response, body) from None
 
         return await self._process_response(
             cast_to=cast_to,
