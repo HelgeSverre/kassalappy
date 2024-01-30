@@ -64,6 +64,16 @@ async def shopping_list(ctx: click.Context, list_id: int, items: bool):
     click.echo(tabulate(data_model['items'], headers="keys", **TABULATE_DEFAULTS))
 
 
+@cli.command("shopping-list-items")
+@click.argument("list_id", type=int)
+@click.pass_context
+async def shopping_list_items(ctx: click.Context, list_id: int):
+    """Get details for a specific shopping list."""
+    client: Kassalapp = ctx.obj["client"]
+    data = await client.get_shopping_list_items(list_id)
+    click.echo(tabulate([m.model_dump() for m in data], headers="keys", **TABULATE_DEFAULTS))
+
+
 @cli.command("add-item")
 @click.option("--list_id", type=int)
 @click.argument("text", required=True)
