@@ -82,8 +82,8 @@ class Kassalapp:
     ) -> R:
         response_data = await response.json()
 
-        if response.ok:
-            data = response_data.get("data") or response_data
+        if response.ok and "data" in response_data:
+            data = response_data.get("data")
         else:
             data = response_data
 
