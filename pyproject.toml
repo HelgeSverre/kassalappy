@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "kassalappy"
-version = "0.8.0"
+version = "1.0.0"
 description = ""
 authors = ["Bendik R. Brenne <bendik@konstant.no>"]
 license = "MIT"
@@ -13,11 +13,10 @@ packages = [
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.12"
-aiohttp = "3.8.*"
-anyio = "4.*"
 asyncclick = "8.*"
-pydantic = "2.4.*"
 tabulate = "0.9.*"
+aiohttp = "3.9.3"
+pydantic = "^2.6.0"
 
 [tool.poetry.group.dev.dependencies]
 pylint = "3.0.2"
