@@ -3,11 +3,11 @@ from __future__ import annotations
 
 import logging
 
-import aiohttp
 import asyncclick as click
 from tabulate import tabulate
 
 from kassalappy import Kassalapp
+from kassalappy.models import PhysicalStoreGroup, ProximitySearch
 
 TABULATE_DEFAULTS = {
     "tablefmt": "rounded_grid",
@@ -20,14 +20,22 @@ TABULATE_DEFAULTS = {
 @click.pass_context
 async def cli(ctx: click.Context, token: str, debug: bool):
     """Kassalapp CLI."""
-    session = aiohttp.ClientSession()
-    client = Kassalapp(access_token=token, websession=session)
+    configure_logging(debug)
+    client = Kassalapp(access_token=token)
 
     ctx.ensure_object(dict)
     ctx.obj["DEBUG"] = debug
     ctx.obj["client"] = client
+    await ctx.with_async_resource(client)
 
-    configure_logging(debug)
+
+@cli.command("health")
+@click.pass_context
+async def health(ctx: click.Context):
+    """Checks if the Kassalapp API is working."""
+    client: Kassalapp = ctx.obj["client"]
+    data = await client.healthy()
+    click.echo(data)
 
 
 @cli.command("shopping-lists")
@@ -38,7 +46,6 @@ async def shopping_lists(ctx: click.Context, items: bool):
     client: Kassalapp = ctx.obj["client"]
     data = await client.get_shopping_lists(include_items=items)
     click.echo(tabulate([m.model_dump() for m in data], headers="keys", **TABULATE_DEFAULTS))
-    await client.close_connection()
 
 
 @cli.command("shopping-list")
@@ -49,8 +56,12 @@ async def shopping_list(ctx: click.Context, list_id: int, items: bool):
     """Get details for a specific shopping list."""
     client: Kassalapp = ctx.obj["client"]
     data = await client.get_shopping_list(list_id, include_items=items)
-    click.echo(tabulate([data.model_dump()], headers="keys", **TABULATE_DEFAULTS))
-    await client.close_connection()
+    data_model = data.model_dump()
+    exclude_keys = ['items']
+    new_d = {k: data_model[k] for k in set(list(data_model.keys())) - set(exclude_keys)}
+    click.echo(tabulate([new_d], headers="keys", **TABULATE_DEFAULTS))
+    click.echo("Items")
+    click.echo(tabulate(data_model['items'], headers="keys", **TABULATE_DEFAULTS))
 
 
 @cli.command("add-item")
@@ -63,7 +74,6 @@ async def add_item(ctx: click.Context, list_id: int, text: str, product_id: int 
     client: Kassalapp = ctx.obj["client"]
     response = await client.add_shopping_list_item(list_id, text, product_id)
     click.echo(response)
-    await client.close_connection()
 
 
 @cli.command("product")
@@ -75,7 +85,49 @@ async def product_search(ctx: click.Context, search: str, count: int):
     client: Kassalapp = ctx.obj["client"]
     results = await client.product_search(search=search, size=count, unique=True)
     click.echo(tabulate([r.model_dump() for r in results], headers="keys", **TABULATE_DEFAULTS))
-    await client.close_connection()
+
+
+@cli.command("store-groups")
+async def store_groups():
+    """Get list of available physical store groups."""
+    groups = [g.value for g in PhysicalStoreGroup]
+    groups.sort()
+    click.echo(groups)
+
+
+@cli.command("stores")
+@click.option("--proximity",
+              type=ProximitySearch,
+              help="Proximity of stores to search for (latitude longitude radius)")
+@click.option("--group", type=PhysicalStoreGroup)
+@click.argument("search", type=str, required=False)
+@click.option("--count", type=int, help="Number of results to return")
+@click.pass_context
+async def store_search(
+    ctx: click.Context,
+    proximity: ProximitySearch,
+    group: PhysicalStoreGroup,
+    search: str,
+    count: int,
+):
+    """Search for physical stores."""
+    proximity_search = None
+    if proximity:
+        lat, lng, radius = proximity
+        proximity_search = ProximitySearch(lat=lat, lng=lng, km=radius)
+
+    client: Kassalapp = ctx.obj["client"]
+    results = await client.physical_stores(search=search, group=group, proximity=proximity_search, size=count)
+    click.echo(tabulate([r.model_dump() for r in results], headers="keys", **TABULATE_DEFAULTS))
+
+
+@cli.command("webhooks")
+@click.pass_context
+async def webhooks(ctx: click.Context):
+    """Get webhooks."""
+    client: Kassalapp = ctx.obj["client"]
+    results = await client.get_webhooks()
+    click.echo(tabulate([r.model_dump() for r in results], headers="keys", **TABULATE_DEFAULTS))
 
 
 def configure_logging(debug: bool):
