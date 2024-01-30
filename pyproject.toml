@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "kassalappy"
-version = "1.0.2"
+version = "1.0.3"
 description = "Python client for the Kassal.app API"
 authors = ["Bendik R. Brenne <bendik@konstant.no>"]
 license = "MIT"
