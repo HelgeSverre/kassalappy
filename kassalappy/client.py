@@ -28,7 +28,7 @@ from .exceptions import (
     UnprocessableEntityError,
 )
 from .models import (
-    KassalappResource,
+    KassalappBaseModel,
     MessageResponse,
     PhysicalStore,
     PhysicalStoreGroup,
@@ -45,7 +45,7 @@ R = TypeVar("R")
 
 ResponseT = TypeVar(
     "ResponseT",
-    bound=KassalappResource | MessageResponse | StatusResponse | dict[str, any],
+    bound=KassalappBaseModel | dict[str, any],
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -226,12 +226,17 @@ class Kassalapp:
 
     async def update_shopping_list(self, list_id: int, title: str):
         """Update a new shopping list."""
-        return await self.execute(f"shopping-lists/{list_id}", ShoppingList, "patch", data={"title": title})
+        return await self.execute(
+            f"shopping-lists/{list_id}",
+            ShoppingList,
+            "patch",
+            data={"title": title},
+        )
 
     async def get_shopping_list_items(self, list_id: int):
         """Shorthand method to get all items from a shopping list."""
         shopping_list = await self.get_shopping_list(list_id, include_items=True)
-        return shopping_list.get("items", [])
+        return shopping_list.items or []
 
     async def add_shopping_list_item(self, list_id: int, text: str, product_id: int | None = None):
         """Add an item to an existing shopping list."""
@@ -239,7 +244,12 @@ class Kassalapp:
             "text": text,
             "product_id": product_id,
         }
-        return await self.execute(f"shopping-lists/{list_id}/items", ShoppingListItem, "post", data=item)
+        return await self.execute(
+            f"shopping-lists/{list_id}/items",
+            ShoppingListItem,
+            "post",
+            data=item,
+        )
 
     async def delete_shopping_list_item(self, list_id: int, item_id: int):
         """Remove an item from the shopping list."""

@@ -48,7 +48,11 @@ class PhysicalStoreGroup(StrEnum):
     ADLIBRIS = "ADLIBRIS"
 
 
-class KassalappResource(BaseModel, ABC):
+class KassalappBaseModel(BaseModel):
+    pass
+
+
+class KassalappResource(KassalappBaseModel, ABC):
     """Kassalapp resource."""
 
     id: int | None = None
@@ -162,7 +166,7 @@ class ProductBase(KassalappResource):
 
 
 class Product(ProductBase):
-    ean: int | None
+    ean: str | None
     current_price: float | None
     current_unit_price: float | None
     allergens: list[AllergenItem] | None
@@ -175,8 +179,8 @@ class ProductComparisonItem(ProductBase):
     kassalapp: dict[str, str]
 
 
-class ProductComparison(ProductBase):
-    ean: int | None
+class ProductComparison(KassalappBaseModel):
+    ean: str | None
     products: list[ProductComparisonItem] | None
     allergens: list[AllergenItem] | None
     nutrition: list[NutritionItem] | None
@@ -194,11 +198,11 @@ class ShoppingList(KassalappResource):
     items: list[ShoppingListItem] | None = None
 
 
-class MessageResponse(BaseModel):
+class MessageResponse(KassalappBaseModel):
     message: str
 
 
-class StatusResponse(BaseModel):
+class StatusResponse(KassalappBaseModel):
     status: str
 
 
