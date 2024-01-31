@@ -66,14 +66,17 @@ class Kassalapp:
         self.websession = websession
         self.timeout: int = timeout
         self._access_token: str = access_token
+        self._close_websession = False
 
     async def __aenter__(self) -> Kassalapp:
         if self.websession is None:
             self.websession = aiohttp.ClientSession()
+            self._close_websession = True
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await self.websession.close()
+        if self._close_websession:
+            await self.websession.close()
 
     async def _process_response(
         self,
@@ -183,11 +186,12 @@ class Kassalapp:
             "timeout": aiohttp.ClientTimeout(total=timeout),
         }
         request_url = f"{API_ENDPOINT}/{endpoint}"
+        response = None
+        body = None
         try:
-            async with self.websession as session:
-                response = await session.request(method, request_url, **request_args)
-                body = await response.text()
-                response.raise_for_status()
+            response = await self.websession.request(method, request_url, **request_args)
+            body = await response.text()
+            response.raise_for_status()
         except aiohttp.ServerTimeoutError as err:
             raise APITimeoutError(request=response.request_info) from err
         except (aiohttp.ClientResponseError, aiohttp.ClientError):
