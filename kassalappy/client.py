@@ -29,7 +29,6 @@ from .exceptions import (
 )
 from .models import (
     KassalappBaseModel,
-    MessageResponse,
     PhysicalStore,
     PhysicalStoreGroup,
     Product,
@@ -167,12 +166,12 @@ class Kassalapp:
     async def execute(
         self,
         endpoint: str,
-        cast_to: type[ResponseT],
+        cast_to: type[ResponseT] | None = None,
         method: str = aiohttp.hdrs.METH_GET,
         params: dict[str, any] | None = None,
         data: dict[any, any] | None = None,
         timeout: int | None = None,
-    ) -> ResponseT | list[ResponseT]:
+    ) -> ResponseT | list[ResponseT] | None:
         """"Execute a API request and return the data."""
         timeout = timeout or self.timeout
 
@@ -180,6 +179,7 @@ class Kassalapp:
             "headers": {
                 "Authorization": "Bearer " + self._access_token,
                 aiohttp.hdrs.USER_AGENT: self._user_agent,
+                aiohttp.hdrs.ACCEPT: "application/json",
             },
             "json": data,
             "params": params,
@@ -196,6 +196,9 @@ class Kassalapp:
             raise APITimeoutError(request=response.request_info) from err
         except (aiohttp.ClientResponseError, aiohttp.ClientError):
             raise self._make_status_error_from_response(response, body) from None
+
+        if response.status == HTTPStatus.NO_CONTENT:
+            return None
 
         return await self._process_response(
             cast_to=cast_to,
@@ -224,9 +227,9 @@ class Kassalapp:
         """Create a new shopping list."""
         return await self.execute("shopping-lists", ShoppingList, "post", data={"title": title})
 
-    async def delete_shopping_list(self, list_id: int) -> MessageResponse:
+    async def delete_shopping_list(self, list_id: int):
         """Delete a shopping list."""
-        return await self.execute(f"shopping-lists/{list_id}", MessageResponse, "delete")
+        await self.execute(f"shopping-lists/{list_id}", method="delete")
 
     async def update_shopping_list(self, list_id: int, title: str) -> ShoppingList:
         """Update a new shopping list."""
@@ -255,13 +258,9 @@ class Kassalapp:
             data=item,
         )
 
-    async def delete_shopping_list_item(self, list_id: int, item_id: int) -> MessageResponse:
+    async def delete_shopping_list_item(self, list_id: int, item_id: int):
         """Remove an item from the shopping list."""
-        return await self.execute(
-            f"shopping-lists/{list_id}/items/{item_id}",
-            MessageResponse,
-            "delete",
-        )
+        await self.execute(f"shopping-lists/{list_id}/items/{item_id}", method="delete")
 
     async def update_shopping_list_item(
         self,
@@ -461,6 +460,6 @@ class Kassalapp:
             data=data,
         )
 
-    async def delete_webhook(self, webhook_id: int) -> MessageResponse:
+    async def delete_webhook(self, webhook_id: int):
         """Remove an existing webhook from the system."""
-        return await self.execute(f"webhooks/{webhook_id}", MessageResponse, "delete")
+        await self.execute(f"webhooks/{webhook_id}", method="delete")

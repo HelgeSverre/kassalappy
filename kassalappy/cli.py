@@ -86,6 +86,28 @@ async def add_item(ctx: click.Context, list_id: int, text: str, product_id: int 
     click.echo(response)
 
 
+@cli.command("check-item")
+@click.option("--list_id", type=int)
+@click.argument("item_id", type=int)
+@click.pass_context
+async def check_item(ctx: click.Context, list_id: int, item_id: int):
+    """Mark a shopping list item as checked."""
+    client: Kassalapp = ctx.obj["client"]
+    response = await client.update_shopping_list_item(list_id, item_id, checked=True)
+    click.echo(response.model_dump())
+
+
+@cli.command("delete-item")
+@click.option("--list_id", type=int)
+@click.argument("item_id", type=int)
+@click.pass_context
+async def delete_item(ctx: click.Context, list_id: int, item_id: int):
+    """Delete a shopping list item."""
+    client: Kassalapp = ctx.obj["client"]
+    await client.delete_shopping_list_item(list_id, item_id)
+    click.echo(f"Item #{item_id} successfully deleted.")
+
+
 @cli.command("product")
 @click.argument("search", type=str)
 @click.option("--count", type=int, default=5, help="Number of results to return")
