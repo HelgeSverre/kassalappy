@@ -169,7 +169,7 @@ class Kassalapp:
         params: dict[str, any] | None = None,
         data: dict[any, any] | None = None,
         timeout: int | None = None,
-    ) -> ResponseT:
+    ) -> ResponseT | list[ResponseT]:
         """"Execute a API request and return the data."""
         timeout = timeout or self.timeout
 
@@ -198,33 +198,33 @@ class Kassalapp:
             response=response,
         )
 
-    async def healthy(self):
+    async def healthy(self) -> StatusResponse:
         """Check if the Kassalapp API is working."""
         return await self.execute("health", StatusResponse)
 
-    async def get_shopping_lists(self, include_items: bool = False):
+    async def get_shopping_lists(self, include_items: bool = False) -> list[ShoppingList]:
         """Get shopping lists."""
         params = {}
         if include_items:
             params["include"] = "items"
         return await self.execute("shopping-lists", ShoppingList, params=params)
 
-    async def get_shopping_list(self, list_id: int, include_items: bool = False):
+    async def get_shopping_list(self, list_id: int, include_items: bool = False) -> ShoppingList:
         """Get a shopping list."""
         params = {}
         if include_items:
             params["include"] = "items"
         return await self.execute(f"shopping-lists/{list_id}", ShoppingList, params=params)
 
-    async def create_shopping_list(self, title: str):
+    async def create_shopping_list(self, title: str) -> ShoppingList:
         """Create a new shopping list."""
         return await self.execute("shopping-lists", ShoppingList, "post", data={"title": title})
 
-    async def delete_shopping_list(self, list_id: int):
+    async def delete_shopping_list(self, list_id: int) -> MessageResponse:
         """Delete a shopping list."""
-        return await self.execute(f"shopping-lists/{list_id}", ShoppingList, "delete")
+        return await self.execute(f"shopping-lists/{list_id}", MessageResponse, "delete")
 
-    async def update_shopping_list(self, list_id: int, title: str):
+    async def update_shopping_list(self, list_id: int, title: str) -> ShoppingList:
         """Update a new shopping list."""
         return await self.execute(
             f"shopping-lists/{list_id}",
@@ -233,12 +233,12 @@ class Kassalapp:
             data={"title": title},
         )
 
-    async def get_shopping_list_items(self, list_id: int):
+    async def get_shopping_list_items(self, list_id: int) -> list[ShoppingListItem]:
         """Shorthand method to get all items from a shopping list."""
         shopping_list = await self.get_shopping_list(list_id, include_items=True)
         return shopping_list.items or []
 
-    async def add_shopping_list_item(self, list_id: int, text: str, product_id: int | None = None):
+    async def add_shopping_list_item(self, list_id: int, text: str, product_id: int | None = None) -> ShoppingListItem:
         """Add an item to an existing shopping list."""
         item = {
             "text": text,
@@ -251,7 +251,7 @@ class Kassalapp:
             data=item,
         )
 
-    async def delete_shopping_list_item(self, list_id: int, item_id: int):
+    async def delete_shopping_list_item(self, list_id: int, item_id: int) -> MessageResponse:
         """Remove an item from the shopping list."""
         return await self.execute(
             f"shopping-lists/{list_id}/items/{item_id}",
@@ -265,7 +265,7 @@ class Kassalapp:
         item_id: int,
         text: str | None = None,
         checked: bool | None = None,
-    ):
+    ) -> ShoppingListItem:
         """Update an item in the shopping list."""
         data = {
             "text": text,
@@ -291,7 +291,7 @@ class Kassalapp:
         size: int | None = None,
         sort: Literal["date_asc", "date_desc", "name_asc", "name_desc", "price_asc", "price_desc"] | None = None,
         unique: bool = False,
-    ):
+    ) -> list[Product]:
         """Search for groceries and various product to find price, ingredients and nutritional information.
 
         :param search: Search for products based on a keyword.
@@ -330,7 +330,7 @@ class Kassalapp:
             params={k: v for k, v in params.items() if v is not None},
         )
 
-    async def product_find_by_url(self, url: str):
+    async def product_find_by_url(self, url: str) -> Product:
         """Will look up product information based on a URL.
         Returns the product price, nutritional information, ingredients, allergens for the product.
         """
@@ -343,7 +343,7 @@ class Kassalapp:
             params=params,
         )
 
-    async def products_find_by_url(self, url: str):
+    async def products_find_by_url(self, url: str) -> ProductComparison:
         """Will look up product information based on a URL.
         Returns all matching prices from other stores that stock that item.
         """
@@ -356,14 +356,14 @@ class Kassalapp:
             params=params,
         )
 
-    async def product_get_by_id(self, product_id: int):
+    async def product_get_by_id(self, product_id: int) -> Product:
         """Gets a specific product by id."""
         return await self.execute(
             f"products/id/{product_id}",
             Product,
         )
 
-    async def product_get_by_ean(self, ean: str):
+    async def product_get_by_ean(self, ean: str) -> ProductComparison:
         """Gets a specific product by EAN (barcode) number."""
         return await self.execute(
             f"products/ean/{ean}",
@@ -376,7 +376,7 @@ class Kassalapp:
         group: PhysicalStoreGroup | None = None,
         proximity: ProximitySearch | None = None,
         size: int | None = None,
-    ):
+    ) -> list[PhysicalStore]:
         """Search for physical stores.
 
         Useful for finding a grocery store by name, location or based on the group (grocery store chain),
@@ -404,14 +404,14 @@ class Kassalapp:
             params={k: v for k, v in params.items() if v is not None},
         )
 
-    async def physical_store(self, store_id: int):
+    async def physical_store(self, store_id: int) -> PhysicalStore:
         """Finds a grocery store by ID."""
         return await self.execute(
             f"physical-stores/{store_id}",
             PhysicalStore,
         )
 
-    async def get_webhooks(self):
+    async def get_webhooks(self) -> list[Webhook]:
         """Retrieves a collection of webhooks associated with the authenticated user."""
         return await self.execute("webhooks", Webhook)
 
@@ -421,7 +421,7 @@ class Kassalapp:
         name: str | None = None,
         ids: list[str] | None = None,
         eans: list[str] | None = None,
-    ):
+    ) -> Webhook:
         """Create and store a new webhook associated with the authenticated user."""
         params = {
             "url": url,
@@ -442,7 +442,7 @@ class Kassalapp:
         name: str | None = None,
         ids: list[str] | None = None,
         eans: list[str] | None = None,
-    ):
+    ) -> Webhook:
         """Create and store a new webhook associated with the authenticated user."""
         data = {
             "url": url,
@@ -457,6 +457,6 @@ class Kassalapp:
             data=data,
         )
 
-    async def delete_webhook(self, webhook_id: int):
+    async def delete_webhook(self, webhook_id: int) -> MessageResponse:
         """Remove an existing webhook from the system."""
         return await self.execute(f"webhooks/{webhook_id}", MessageResponse, "delete")
