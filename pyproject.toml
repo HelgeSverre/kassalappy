@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "kassalappy"
-version = "1.0.7"
+version = "1.0.8"
 description = "Python client for the Kassal.app API"
 authors = ["Bendik R. Brenne <bendik@konstant.no>"]
 license = "MIT"
@@ -12,7 +12,7 @@ packages = [
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.12"
+python = ">=3.10"
 aiohttp = "3.9.*"
 asyncclick = "8.*"
 pydantic = "^2.5"
