@@ -77,6 +77,12 @@ class Kassalapp:
         if self._close_websession:
             await self.websession.close()
 
+    def _ensure_websession(self) -> None:
+        if self.websession is not None:
+            return
+        self.websession = aiohttp.ClientSession()
+        self._close_websession = True
+
     async def _process_response(
         self,
         cast_to: type[ResponseT],
@@ -189,6 +195,7 @@ class Kassalapp:
         response = None
         body = None
         try:
+            self._ensure_websession()
             response = await self.websession.request(method, request_url, **request_args)
             body = await response.text()
             response.raise_for_status()
