@@ -3,6 +3,7 @@ from __future__ import annotations
 from abc import ABC
 from dataclasses import dataclass, field
 from datetime import datetime
+from enum import Enum
 import logging
 from typing import ClassVar, Literal
 
@@ -11,9 +12,35 @@ from mashumaro.config import ADD_SERIALIZATION_CONTEXT, BaseConfig
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 from typing_extensions import TypedDict
 
-from .typing import StrEnum
-
 _LOGGER = logging.getLogger()
+
+
+# noinspection PyUnresolvedReferences
+class StrEnum(str, Enum):
+    """A string enumeration of type `(str, Enum)`.
+    All members are compared via `upper()`. Defaults to UNKNOWN.
+    """
+
+    def __str__(self) -> str:
+        return str(self.value)
+
+    def __eq__(self, other: str) -> bool:
+        other = other.upper()
+        return super().__eq__(other)
+
+    @classmethod
+    def _missing_(cls, value) -> str:
+        has_unknown = False
+        for member in cls:
+            if member.name.upper() == "UNKNOWN":
+                has_unknown = True
+            if member.name.upper() == value.upper():
+                return member
+        if has_unknown:
+            _LOGGER.warning("'%s' is not a valid '%s'", value, cls.__name__)
+            return cls.UNKNOWN
+        raise ValueError(f"'{value}' is not a valid {cls.__name__}")
+
 
 Unit = Literal[
     "cl",

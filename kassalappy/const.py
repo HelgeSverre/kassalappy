@@ -1,10 +1,11 @@
 """Constants used by kassalapp."""
 
 from http import HTTPStatus
-from importlib.metadata import version
 from typing import Final
 
-VERSION = version("kassalappy")
+from .version import __version__
+
+VERSION = __version__
 
 API_ENDPOINT: Final = "https://kassal.app/api/v1"
 DEFAULT_TIMEOUT: Final = 10
