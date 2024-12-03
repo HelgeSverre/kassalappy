@@ -1,11 +1,11 @@
 """Library to handle connection with kassalapp web API."""
 from __future__ import annotations
 
+from http import HTTPStatus
 import json
 import logging
-from http import HTTPStatus
 from types import NoneType
-from typing import Literal, TypeVar, cast
+from typing import Literal, Self, TypeVar, cast
 
 import aiohttp
 from pydantic import ValidationError
@@ -67,7 +67,7 @@ class Kassalapp:
         self._access_token: str = access_token
         self._close_websession = False
 
-    async def __aenter__(self) -> Kassalapp:
+    async def __aenter__(self) -> Self:
         if self.websession is None:
             self.websession = aiohttp.ClientSession()
             self._close_websession = True
@@ -90,10 +90,7 @@ class Kassalapp:
     ) -> R:
         response_data = await response.json()
 
-        if response.ok and "data" in response_data:
-            data = response_data.get("data")
-        else:
-            data = response_data
+        data = response_data.get("data") if response.ok and "data" in response_data else response_data
 
         try:
             return await self._process_response_data(
@@ -118,7 +115,7 @@ class Kassalapp:
         if data is None:
             return cast(ResponseT, None)
 
-        if type(data) is list:
+        if isinstance(data, list):
             return [cast(ResponseT, cast_to.model_validate(d)) for d in data]
 
         return cast(ResponseT, cast_to.model_validate(data))
@@ -367,14 +364,14 @@ class Kassalapp:
         )
 
     async def product_get_by_id(self, product_id: int) -> Product:
-        """Gets a specific product by id."""
+        """Get a specific product by id."""
         return await self.execute(
             f"products/id/{product_id}",
             Product,
         )
 
     async def product_get_by_ean(self, ean: str) -> ProductComparison:
-        """Gets a specific product by EAN (barcode) number."""
+        """Get a specific product by EAN (barcode) number."""
         return await self.execute(
             f"products/ean/{ean}",
             ProductComparison,
@@ -415,14 +412,14 @@ class Kassalapp:
         )
 
     async def physical_store(self, store_id: int) -> PhysicalStore:
-        """Finds a grocery store by ID."""
+        """Find a grocery store by ID."""
         return await self.execute(
             f"physical-stores/{store_id}",
             PhysicalStore,
         )
 
     async def get_webhooks(self) -> list[Webhook]:
-        """Retrieves a collection of webhooks associated with the authenticated user."""
+        """Retrieve a collection of webhooks associated with the authenticated user."""
         return await self.execute("webhooks", Webhook)
 
     async def create_webhook(

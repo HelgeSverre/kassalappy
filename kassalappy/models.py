@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime  # noqa: TCH003
 from typing import Literal
 
 from pydantic import BaseModel
@@ -49,7 +49,15 @@ class PhysicalStoreGroup(StrEnum):
 
 
 class KassalappBaseModel(BaseModel):
-    pass
+    """Kassalapp base model."""
+
+    _detail_attrs: set[int] | set[str] | dict[int, any] | dict[str, any] | None
+
+    def model_dump(
+        self,
+        **kwargs: any,
+    ):
+        return super().model_dump(mode='json', exclude_none=True, exclude_unset=True, **kwargs)
 
 
 class KassalappResource(KassalappBaseModel, ABC):
@@ -127,6 +135,20 @@ class PhysicalStore(KassalappResource):
     position: Position | None
     openingHours: OpeningHours | None
 
+    def model_dump_essentials(self, **kwargs: any):
+        return super().model_dump(
+            exclude={
+                "address": True,
+                "phone": True,
+                "email": True,
+                "fax": True,
+                "logo": True,
+                "website": True,
+                "detailUrl": True,
+            },
+            **kwargs,
+        )
+
 
 class ProductCategory(TypedDict):
     id: int
@@ -164,6 +186,26 @@ class ProductBase(KassalappResource):
     weight_unit: Unit | None = None
     price_history: list[Price] | None = None
 
+    def model_dump_essentials(self, **kwargs: any):
+        return super().model_dump(
+            exclude={
+                "vendor": True,
+                "ingredients": True,
+                "url": True,
+                "image": True,
+                "category": True,
+                "store": {
+                    "code": True,
+                    "url": True,
+                    "logo": True,
+                },
+                "weight": True,
+                "weight_unit": True,
+                "price_history": True,
+            },
+            **kwargs,
+        )
+
 
 class Product(ProductBase):
     ean: str | None
@@ -172,6 +214,28 @@ class Product(ProductBase):
     allergens: list[AllergenItem] | None
     nutrition: list[NutritionItem] | None
     labels: list[LabelItem] | None
+
+    def model_dump_essentials(self, **kwargs: any):
+        return super().model_dump(
+            exclude={
+                "allergens": True,
+                "nutrition": True,
+                "labels": {
+                    "__all__": {
+                        "display_name",
+                        "description",
+                        "organization",
+                        "alternative_names",
+                        "type",
+                        "year_established",
+                        "about",
+                        "note",
+                        "icon",
+                    },
+                },
+            },
+            **kwargs,
+        )
 
 
 class ProductComparisonItem(ProductBase):
@@ -192,10 +256,81 @@ class ShoppingListItem(KassalappResource):
     checked: bool
     product: ProductComparison | None
 
+    def model_dump_essentials(self, **kwargs: any):
+        return super().model_dump(
+            exclude={
+                "product": {
+                    "products": {
+                        "__all__": {
+                            "created_at": True,
+                            "updated_at": True,
+                            "vendor": True,
+                            "ingredients": True,
+                            "url": True,
+                            "image": True,
+                            "category": True,
+                            "store": {
+                                "code": True,
+                                "url": True,
+                                "logo": True,
+                            },
+                            "weight": True,
+                            "weight_unit": True,
+                            "price_history": True,
+                            "kassalapp": True,
+                        },
+                    },
+                    "allergens": True,
+                    "nutrition": True,
+                    "labels": True,
+                    # "labels": {
+                    #     "__all__": {
+                    #         "display_name",
+                    #         "description",
+                    #         "organization",
+                    #         "alternative_names",
+                    #         "type",
+                    #         "year_established",
+                    #         "about",
+                    #         "note",
+                    #         "icon",
+                    #     },
+                    # },
+                },
+            },
+            **kwargs,
+        )
+
 
 class ShoppingList(KassalappResource):
     title: str
     items: list[ShoppingListItem] | None = None
+
+    def model_dump_essentials(self, **kwargs: any):
+        return super().model_dump(
+            exclude={
+                "items": {
+                    "__all__": {
+                        "allergens": True,
+                        "nutrition": True,
+                        "labels": {
+                            "__all__": {
+                                "display_name",
+                                "description",
+                                "organization",
+                                "alternative_names",
+                                "type",
+                                "year_established",
+                                "about",
+                                "note",
+                                "icon",
+                            },
+                        },
+                    },
+                },
+            },
+            **kwargs,
+        )
 
 
 class MessageResponse(KassalappBaseModel):

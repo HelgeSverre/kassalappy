@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import logging
 from enum import Enum
+import logging
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -10,6 +11,7 @@ class StrEnum(str, Enum):
     """A string enumeration of type `(str, Enum)`.
     All members are compared via `upper()`. Defaults to UNKNOWN.
     """
+
     def __eq__(self, other: str) -> bool:
         other = other.upper()
         return super().__eq__(other)

@@ -32,7 +32,7 @@ async def cli(ctx: click.Context, token: str, debug: bool):
 @cli.command("health")
 @click.pass_context
 async def health(ctx: click.Context):
-    """Checks if the Kassalapp API is working."""
+    """Check if the Kassalapp API is working."""
     client: Kassalapp = ctx.obj["client"]
     data = await client.healthy()
     click.echo(data)
@@ -58,7 +58,7 @@ async def shopping_list(ctx: click.Context, list_id: int, items: bool):
     data = await client.get_shopping_list(list_id, include_items=items)
     data_model = data.model_dump()
     exclude_keys = ['items']
-    new_d = {k: data_model[k] for k in set(list(data_model.keys())) - set(exclude_keys)}
+    new_d = {k: data_model[k] for k in set(data_model.keys()) - set(exclude_keys)}
     click.echo(tabulate([new_d], headers="keys", **TABULATE_DEFAULTS))
     click.echo("Items")
     click.echo(tabulate(data_model['items'], headers="keys", **TABULATE_DEFAULTS))
@@ -71,7 +71,7 @@ async def shopping_list_items(ctx: click.Context, list_id: int):
     """Get details for a specific shopping list."""
     client: Kassalapp = ctx.obj["client"]
     data = await client.get_shopping_list_items(list_id)
-    click.echo(tabulate([m.model_dump() for m in data], headers="keys", **TABULATE_DEFAULTS))
+    click.echo(tabulate([m.model_dump_essentials() for m in data], headers="keys", **TABULATE_DEFAULTS))
 
 
 @cli.command("add-item")

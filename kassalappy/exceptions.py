@@ -1,9 +1,10 @@
 """Exceptions."""
 from __future__ import annotations
 
-from typing import Literal, cast
+from typing import TYPE_CHECKING, Literal, cast
 
-import aiohttp
+if TYPE_CHECKING:
+    import aiohttp
 
 
 class APIError(Exception):

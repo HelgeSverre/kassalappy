@@ -1,4 +1,4 @@
-"""Kassal.app"""
+"""kassalappy."""
 
 from .client import Kassalapp
 
