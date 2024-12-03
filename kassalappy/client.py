@@ -1,14 +1,19 @@
 """Library to handle connection with kassalapp web API."""
+
 from __future__ import annotations
 
+import asyncio
+from dataclasses import dataclass
 from http import HTTPStatus
 import json
 import logging
 from types import NoneType
 from typing import Literal, Self, TypeVar, cast
 
-import aiohttp
-from pydantic import ValidationError
+from aiohttp import ClientError, ClientResponse, ClientResponseError, ClientSession
+from aiohttp.hdrs import METH_DELETE, METH_GET, METH_PATCH, METH_POST
+import async_timeout
+from mashumaro.exceptions import MissingField
 
 from .const import (
     API_ENDPOINT,
@@ -26,6 +31,7 @@ from .exceptions import (
     PermissionDeniedError,
     RateLimitError,
     UnprocessableEntityError,
+    ValidationError,
 )
 from .models import (
     KassalappBaseModel,
@@ -34,6 +40,7 @@ from .models import (
     Product,
     ProductComparison,
     ProximitySearch,
+    ProximitySearchDict,
     ShoppingList,
     ShoppingListItem,
     StatusResponse,
@@ -51,25 +58,21 @@ _LOGGER = logging.getLogger(__name__)
 
 
 # noinspection PyMethodMayBeStatic
+@dataclass
 class Kassalapp:
     """Class to communicate with the Kassalapp API."""
 
-    def __init__(
-        self,
-        access_token: str,
-        timeout: int = DEFAULT_TIMEOUT,
-        websession: aiohttp.ClientSession | None = None,
-    ):
-        """Initialize the Kassalapp connection."""
-        self._user_agent: str = f"python kassalappy/{VERSION}"
-        self.websession = websession
-        self.timeout: int = timeout
-        self._access_token: str = access_token
-        self._close_websession = False
+    access_token: str
+    request_timeout: int = DEFAULT_TIMEOUT
+    user_agent: str = f"python kassalappy/{VERSION}"
+
+    websession: ClientSession | None = None
+
+    _close_session: bool = False
 
     async def __aenter__(self) -> Self:
         if self.websession is None:
-            self.websession = aiohttp.ClientSession()
+            self.websession = ClientSession()
             self._close_websession = True
         return self
 
@@ -77,16 +80,25 @@ class Kassalapp:
         if self._close_websession:
             await self.websession.close()
 
+    @property
+    def request_header(self) -> dict[str, str]:
+        """Generate a header for HTTP requests to the server."""
+        return {
+            "Authorization": "Bearer " + self.access_token,
+            "User-Agent": self.user_agent,
+            "Accept": "application/json",
+        }
+
     def _ensure_websession(self) -> None:
-        if self.websession is not None:
-            return
-        self.websession = aiohttp.ClientSession()
-        self._close_websession = True
+        if self.websession is None or self.websession.closed:
+            self.websession = ClientSession()
+            _LOGGER.debug("New session created.")
+            self._close_websession = True
 
     async def _process_response(
         self,
         cast_to: type[ResponseT],
-        response: aiohttp.ClientResponse,
+        response: ClientResponse,
     ) -> R:
         response_data = await response.json()
 
@@ -97,34 +109,41 @@ class Kassalapp:
                 data=data,
                 cast_to=cast_to,
             )
-        except ValidationError:
-            _LOGGER.exception("Error validating response data")
-            raise
+        except (MissingField, TypeError) as err:
+            msg = "Unable to deserialize or validate response data"
+            raise ValidationError(msg) from err
 
     async def _process_response_data(
         self,
-        data: object | list[object],
+        data: dict | list[dict],
         cast_to: type[ResponseT],
     ) -> ResponseT | list[ResponseT]:
         if cast_to is NoneType:
             return cast(R, None)
 
-        if cast_to == str:
+        if cast_to is str:
             return cast(R, data)
 
         if data is None:
             return cast(ResponseT, None)
 
         if isinstance(data, list):
-            return [cast(ResponseT, cast_to.model_validate(d)) for d in data]
+            return [cast(ResponseT, cast_to.from_dict(d)) for d in data]
 
-        return cast(ResponseT, cast_to.model_validate(data))
+        return cast(ResponseT, cast_to.from_dict(data))
+
+    async def _request_check_status(self, response: ClientResponse):
+        err = self._make_status_error_from_response(response)
+        if err is not None:
+            raise err
 
     def _make_status_error_from_response(
         self,
-        response: aiohttp.ClientResponse,
-        err_text: str
-    ) -> APIStatusError:
+        response: ClientResponse,
+        err_text: str | None = None,
+    ) -> APIStatusError | None:
+        if err_text is None:
+            err_text = ""
         body = err_text.strip()
         try:
             body = json.loads(err_text)
@@ -134,13 +153,13 @@ class Kassalapp:
 
         return self._make_status_error(err_msg, body=body, response=response)
 
-    def _make_status_error(
+    def _make_status_error(  # noqa: PLR0911
         self,
         err_msg: str,
         *,
         body: object,
-        response: aiohttp.ClientResponse,
-    ) -> APIStatusError:
+        response: ClientResponse,
+    ) -> APIStatusError | None:
         if response.status == HTTPStatus.BAD_REQUEST:
             return BadRequestError(err_msg, response=response, body=body)
 
@@ -164,42 +183,49 @@ class Kassalapp:
 
         if response.status >= HTTPStatus.INTERNAL_SERVER_ERROR:
             return InternalServerError(err_msg, response=response, body=body)
-        return APIStatusError(err_msg, response=response, body=body)
+
+        if not HTTPStatus(response.status).is_success:
+            return APIStatusError(err_msg, response=response, body=body)
+
+        return None
 
     async def execute(
         self,
         endpoint: str,
         cast_to: type[ResponseT] | None = None,
-        method: str = aiohttp.hdrs.METH_GET,
+        method: str = METH_GET,
         params: dict[str, any] | None = None,
         data: dict[any, any] | None = None,
-        timeout: int | None = None,
     ) -> ResponseT | list[ResponseT] | None:
-        """"Execute a API request and return the data."""
-        timeout = timeout or self.timeout
-
+        """Execute a API request and return the data."""
         request_args = {
-            "headers": {
-                "Authorization": "Bearer " + self._access_token,
-                aiohttp.hdrs.USER_AGENT: self._user_agent,
-                aiohttp.hdrs.ACCEPT: "application/json",
-            },
+            "headers": self.request_header,
             "json": data,
             "params": params,
-            "timeout": aiohttp.ClientTimeout(total=timeout),
         }
         request_url = f"{API_ENDPOINT}/{endpoint}"
         response = None
         body = None
+
+        _LOGGER.debug(f"Doing {method} request to '{request_url}' with params: %s", request_args)
+        self._ensure_websession()
         try:
-            self._ensure_websession()
-            response = await self.websession.request(method, request_url, **request_args)
-            body = await response.text()
-            response.raise_for_status()
-        except aiohttp.ServerTimeoutError as err:
+            async with async_timeout.timeout(self.request_timeout):
+                response = await self.websession.request(
+                    method,
+                    request_url,
+                    **request_args,
+                    raise_for_status=self._request_check_status,
+                )
+                body = await response.text("utf-8")
+                _LOGGER.debug("Got response: %s", body)
+        except asyncio.TimeoutError as err:
             raise APITimeoutError(request=response.request_info) from err
-        except (aiohttp.ClientResponseError, aiohttp.ClientError):
-            raise self._make_status_error_from_response(response, body) from None
+        except (
+            ClientError,
+            ClientResponseError,
+        ) as err:
+            raise self._make_status_error_from_response(response, body) from err
 
         if response.status == HTTPStatus.NO_CONTENT:
             return None
@@ -220,7 +246,7 @@ class Kassalapp:
             params["include"] = "items"
         return await self.execute("shopping-lists", ShoppingList, params=params)
 
-    async def get_shopping_list(self, list_id: int, include_items: bool = False) -> ShoppingList:
+    async def get_shopping_list(self, list_id: int, include_items: bool = True) -> ShoppingList:
         """Get a shopping list."""
         params = {}
         if include_items:
@@ -229,18 +255,18 @@ class Kassalapp:
 
     async def create_shopping_list(self, title: str) -> ShoppingList:
         """Create a new shopping list."""
-        return await self.execute("shopping-lists", ShoppingList, "post", data={"title": title})
+        return await self.execute("shopping-lists", ShoppingList, METH_POST, data={"title": title})
 
     async def delete_shopping_list(self, list_id: int):
         """Delete a shopping list."""
-        await self.execute(f"shopping-lists/{list_id}", method="delete")
+        await self.execute(f"shopping-lists/{list_id}", method=METH_DELETE)
 
     async def update_shopping_list(self, list_id: int, title: str) -> ShoppingList:
         """Update a new shopping list."""
         return await self.execute(
             f"shopping-lists/{list_id}",
             ShoppingList,
-            "patch",
+            METH_PATCH,
             data={"title": title},
         )
 
@@ -249,7 +275,9 @@ class Kassalapp:
         shopping_list = await self.get_shopping_list(list_id, include_items=True)
         return shopping_list.items or []
 
-    async def add_shopping_list_item(self, list_id: int, text: str, product_id: int | None = None) -> ShoppingListItem:
+    async def add_shopping_list_item(
+        self, list_id: int, text: str, product_id: int | None = None
+    ) -> ShoppingListItem:
         """Add an item to an existing shopping list."""
         item = {
             "text": text,
@@ -258,13 +286,13 @@ class Kassalapp:
         return await self.execute(
             f"shopping-lists/{list_id}/items",
             ShoppingListItem,
-            "post",
+            METH_POST,
             data=item,
         )
 
     async def delete_shopping_list_item(self, list_id: int, item_id: int):
         """Remove an item from the shopping list."""
-        await self.execute(f"shopping-lists/{list_id}/items/{item_id}", method="delete")
+        await self.execute(f"shopping-lists/{list_id}/items/{item_id}", method=METH_DELETE)
 
     async def update_shopping_list_item(
         self,
@@ -281,7 +309,7 @@ class Kassalapp:
         return await self.execute(
             f"shopping-lists/{list_id}/items/{item_id}",
             ShoppingListItem,
-            "patch",
+            METH_PATCH,
             data={k: v for k, v in data.items() if v is not None},
         )
 
@@ -296,7 +324,8 @@ class Kassalapp:
         price_max: float | None = None,
         price_min: float | None = None,
         size: int | None = None,
-        sort: Literal["date_asc", "date_desc", "name_asc", "name_desc", "price_asc", "price_desc"] | None = None,
+        sort: Literal["date_asc", "date_desc", "name_asc", "name_desc", "price_asc", "price_desc"]
+        | None = None,
         unique: bool = False,
     ) -> list[Product]:
         """Search for groceries and various product to find price, ingredients and nutritional information.
@@ -381,7 +410,7 @@ class Kassalapp:
         self,
         search: str | None = None,
         group: PhysicalStoreGroup | None = None,
-        proximity: ProximitySearch | None = None,
+        proximity: ProximitySearch | ProximitySearchDict | None = None,
         size: int | None = None,
     ) -> list[PhysicalStore]:
         """Search for physical stores.
@@ -391,7 +420,7 @@ class Kassalapp:
 
         :param search: Perform a search based on a keyword.
         :param group: Filter by group name.
-        :param proximity: Search radius in kilometers for proximity search.
+        :param proximity: Filter by proximity to a specific location.
         :param size: The number of results to be displayed per page. Must be an integer between 1 and 100.
         :return:
         """
@@ -400,10 +429,11 @@ class Kassalapp:
             "group": group.value if group is not None else None,
             "size": size,
         }
+        if isinstance(proximity, ProximitySearch):
+            proximity = proximity.to_dict()
+
         if proximity is not None:
-            params['km'] = proximity['km']
-            params['lat'] = proximity['lat']
-            params['lng'] = proximity['lng']
+            params.update(proximity)
 
         return await self.execute(
             "physical-stores",
@@ -460,10 +490,10 @@ class Kassalapp:
         return await self.execute(
             f"webhooks/{webhook_id}",
             Webhook,
-            "patch",
+            METH_PATCH,
             data=data,
         )
 
     async def delete_webhook(self, webhook_id: int):
         """Remove an existing webhook from the system."""
-        await self.execute(f"webhooks/{webhook_id}", method="delete")
+        await self.execute(f"webhooks/{webhook_id}", method=METH_DELETE)

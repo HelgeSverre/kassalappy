@@ -1,24 +1,40 @@
 from __future__ import annotations
 
 from abc import ABC
-from dataclasses import dataclass
-from datetime import datetime  # noqa: TCH003
-from typing import Literal
+from dataclasses import dataclass, field
+from datetime import datetime
+import logging
+from typing import ClassVar, Literal
 
-from pydantic import BaseModel
+from mashumaro import field_options
+from mashumaro.config import ADD_SERIALIZATION_CONTEXT, BaseConfig
+from mashumaro.mixins.orjson import DataClassORJSONMixin
 from typing_extensions import TypedDict
 
 from .typing import StrEnum
 
+_LOGGER = logging.getLogger()
+
 Unit = Literal[
-    "cl", "cm", "dl", "l",
-    "g", "hg", "kg",
-    "m", "m100", "ml",
-    "pair", "dosage",
-    "piece", "portion", "squareMeter"
+    "cl",
+    "cm",
+    "dl",
+    "l",
+    "g",
+    "hg",
+    "kg",
+    "m",
+    "m100",
+    "ml",
+    "pair",
+    "dosage",
+    "piece",
+    "portion",
+    "squareMeter",
 ]
 
 
+# noinspection SpellCheckingInspection
 class PhysicalStoreGroup(StrEnum):
     MENY_NO = "MENY_NO"
     SPAR_NO = "SPAR_NO"
@@ -48,18 +64,45 @@ class PhysicalStoreGroup(StrEnum):
     ADLIBRIS = "ADLIBRIS"
 
 
+@dataclass
+class BaseModel(DataClassORJSONMixin):
+    class Config(BaseConfig):
+        omit_none = True
+        # omit_default = True
+        allow_deserialization_not_by_alias = True
+        serialize_by_alias = True
+        code_generation_options = [ADD_SERIALIZATION_CONTEXT]
+
+
+@dataclass
 class KassalappBaseModel(BaseModel):
     """Kassalapp base model."""
 
-    _detail_attrs: set[int] | set[str] | dict[int, any] | dict[str, any] | None
+    BASE_FIELDS: ClassVar[list[str]] = []
 
-    def model_dump(
-        self,
-        **kwargs: any,
-    ):
-        return super().model_dump(mode='json', exclude_none=True, exclude_unset=True, **kwargs)
+    def __post_serialize__(self, d: dict[str, any], context: dict | None = None):
+        base_fields = self.get_base_fields()
+        if context and context.get("base_fields_only"):
+            return {k: v for k, v in d.items() if k in base_fields}
+        return d
+
+    @classmethod
+    def get_base_fields(cls) -> list[str]:
+        fields = []
+        for base in cls.__mro__:
+            if hasattr(base, "BASE_FIELDS"):
+                fields.extend(base.BASE_FIELDS)
+        return fields
+
+    def to_base_dict(self) -> dict[str, any]:
+        return self.to_dict(
+            context={
+                "base_fields_only": True,
+            }
+        )
 
 
+@dataclass
 class KassalappResource(KassalappBaseModel, ABC):
     """Kassalapp resource."""
 
@@ -67,9 +110,11 @@ class KassalappResource(KassalappBaseModel, ABC):
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
+    BASE_FIELDS = ["id", "created_at", "updated_at"]
+
 
 @dataclass
-class AllergenItem:
+class AllergenItem(BaseModel):
     code: str
     display_name: str
     contains: str
@@ -80,8 +125,8 @@ class Icon(TypedDict):
     png: str | None
 
 
-@dataclass
-class LabelItem:
+@dataclass(kw_only=True)
+class LabelItem(KassalappBaseModel):
     name: str | None
     display_name: str | None
     description: str | None
@@ -93,9 +138,11 @@ class LabelItem:
     note: str | None
     icon: Icon | None
 
+    BASE_FIELDS = ["name"]
+
 
 @dataclass
-class NutritionItem:
+class NutritionItem(BaseModel):
     code: str
     display_name: str
     amount: float
@@ -112,15 +159,24 @@ class OpeningHours(TypedDict):
     sunday: str | None
 
 
-class Position(TypedDict):
+@dataclass
+class Position(BaseModel):
     lat: float
     lng: float
 
 
+@dataclass
 class ProximitySearch(Position):
     km: float
 
 
+class ProximitySearchDict(TypedDict):
+    lat: float
+    lng: float
+    km: float
+
+
+@dataclass(kw_only=True)
 class PhysicalStore(KassalappResource):
     id: int | None
     group: PhysicalStoreGroup | None
@@ -131,47 +187,42 @@ class PhysicalStore(KassalappResource):
     fax: str | None
     logo: str | None
     website: str | None
-    detailUrl: str | None
+    detail_url: str | None = field(default=None, metadata=field_options(alias="detailUrl"))
     position: Position | None
-    openingHours: OpeningHours | None
+    opening_hours: OpeningHours | None = field(default=None, metadata=field_options(alias="openingHours"))
 
-    def model_dump_essentials(self, **kwargs: any):
-        return super().model_dump(
-            exclude={
-                "address": True,
-                "phone": True,
-                "email": True,
-                "fax": True,
-                "logo": True,
-                "website": True,
-                "detailUrl": True,
-            },
-            **kwargs,
-        )
+    BASE_FIELDS = ["id", "group"]
 
 
-class ProductCategory(TypedDict):
+@dataclass
+class ProductCategory(BaseModel):
     id: int
     depth: int
     name: str
 
 
-class Store(TypedDict):
+@dataclass(kw_only=True)
+class Store(KassalappResource):
     name: str
     code: str | None
     url: str | None
     logo: str | None
 
+    BASE_FIELDS = ["name"]
 
-class Price(TypedDict):
+
+@dataclass
+class Price(BaseModel):
     price: float
     date: datetime
 
 
-class CurrentPrice(Price):
+@dataclass
+class CurrentPrice(BaseModel):
     unit_price: float | None
 
 
+@dataclass
 class ProductBase(KassalappResource):
     name: str | None = None
     vendor: str | None = None
@@ -186,27 +237,10 @@ class ProductBase(KassalappResource):
     weight_unit: Unit | None = None
     price_history: list[Price] | None = None
 
-    def model_dump_essentials(self, **kwargs: any):
-        return super().model_dump(
-            exclude={
-                "vendor": True,
-                "ingredients": True,
-                "url": True,
-                "image": True,
-                "category": True,
-                "store": {
-                    "code": True,
-                    "url": True,
-                    "logo": True,
-                },
-                "weight": True,
-                "weight_unit": True,
-                "price_history": True,
-            },
-            **kwargs,
-        )
+    BASE_FIELDS = ["name"]
 
 
+@dataclass(kw_only=True)
 class Product(ProductBase):
     ean: str | None
     current_price: float | None
@@ -215,34 +249,16 @@ class Product(ProductBase):
     nutrition: list[NutritionItem] | None
     labels: list[LabelItem] | None
 
-    def model_dump_essentials(self, **kwargs: any):
-        return super().model_dump(
-            exclude={
-                "allergens": True,
-                "nutrition": True,
-                "labels": {
-                    "__all__": {
-                        "display_name",
-                        "description",
-                        "organization",
-                        "alternative_names",
-                        "type",
-                        "year_established",
-                        "about",
-                        "note",
-                        "icon",
-                    },
-                },
-            },
-            **kwargs,
-        )
+    BASE_FIELDS = ["ean", "current_price", "current_unit_price"]
 
 
+@dataclass(kw_only=True)
 class ProductComparisonItem(ProductBase):
     current_price: CurrentPrice | None
     kassalapp: dict[str, str]
 
 
+@dataclass(kw_only=True)
 class ProductComparison(KassalappBaseModel):
     ean: str | None
     products: list[ProductComparisonItem] | None
@@ -250,97 +266,37 @@ class ProductComparison(KassalappBaseModel):
     nutrition: list[NutritionItem] | None
     labels: list[LabelItem] | None
 
+    BASE_FIELDS = ["products"]
 
+
+@dataclass(kw_only=True)
 class ShoppingListItem(KassalappResource):
     text: str | None
     checked: bool
     product: ProductComparison | None
 
-    def model_dump_essentials(self, **kwargs: any):
-        return super().model_dump(
-            exclude={
-                "product": {
-                    "products": {
-                        "__all__": {
-                            "created_at": True,
-                            "updated_at": True,
-                            "vendor": True,
-                            "ingredients": True,
-                            "url": True,
-                            "image": True,
-                            "category": True,
-                            "store": {
-                                "code": True,
-                                "url": True,
-                                "logo": True,
-                            },
-                            "weight": True,
-                            "weight_unit": True,
-                            "price_history": True,
-                            "kassalapp": True,
-                        },
-                    },
-                    "allergens": True,
-                    "nutrition": True,
-                    "labels": True,
-                    # "labels": {
-                    #     "__all__": {
-                    #         "display_name",
-                    #         "description",
-                    #         "organization",
-                    #         "alternative_names",
-                    #         "type",
-                    #         "year_established",
-                    #         "about",
-                    #         "note",
-                    #         "icon",
-                    #     },
-                    # },
-                },
-            },
-            **kwargs,
-        )
+    BASE_FIELDS = ["text", "checked", "product"]
 
 
+@dataclass(kw_only=True)
 class ShoppingList(KassalappResource):
     title: str
-    items: list[ShoppingListItem] | None = None
+    items: list[ShoppingListItem] = field(default_factory=list)
 
-    def model_dump_essentials(self, **kwargs: any):
-        return super().model_dump(
-            exclude={
-                "items": {
-                    "__all__": {
-                        "allergens": True,
-                        "nutrition": True,
-                        "labels": {
-                            "__all__": {
-                                "display_name",
-                                "description",
-                                "organization",
-                                "alternative_names",
-                                "type",
-                                "year_established",
-                                "about",
-                                "note",
-                                "icon",
-                            },
-                        },
-                    },
-                },
-            },
-            **kwargs,
-        )
+    BASE_FIELDS = ["title", "items"]
 
 
+@dataclass(kw_only=True)
 class MessageResponse(KassalappBaseModel):
     message: str
 
 
+@dataclass(kw_only=True)
 class StatusResponse(KassalappBaseModel):
     status: str
 
 
+@dataclass(kw_only=True)
 class Webhook(KassalappResource):
     name: str | None = None
     url: str

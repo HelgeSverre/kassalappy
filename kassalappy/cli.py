@@ -1,4 +1,5 @@
 """Kassalapp CLI."""
+
 from __future__ import annotations
 
 import logging
@@ -12,6 +13,14 @@ from kassalappy.models import PhysicalStoreGroup, ProximitySearch
 TABULATE_DEFAULTS = {
     "tablefmt": "rounded_grid",
 }
+
+
+def tabulate_model(data: list[dict], keys: list[str]) -> list[list[str]]:
+    result = [keys]
+    for item in data:
+        row = [item.get(key) for key in keys]
+        result.append(row)
+    return result
 
 
 @click.group()
@@ -45,23 +54,42 @@ async def shopping_lists(ctx: click.Context, items: bool):
     """Get shopping lists associated with the authenticated user."""
     client: Kassalapp = ctx.obj["client"]
     data = await client.get_shopping_lists(include_items=items)
-    click.echo(tabulate([m.model_dump() for m in data], headers="keys", **TABULATE_DEFAULTS))
+    lists = tabulate_model(
+        [r.to_base_dict() for r in data],
+        [
+            "id",
+            "title",
+            "created_at",
+            "updated_at",
+        ],
+    )
+    click.echo(tabulate(lists, headers="firstrow", **TABULATE_DEFAULTS))
 
 
 @cli.command("shopping-list")
 @click.argument("list_id", type=int)
-@click.option("--items", is_flag=True, help="Include shopping list items")
+@click.option("--no-items", is_flag=True, help="Don't include list items")
 @click.pass_context
-async def shopping_list(ctx: click.Context, list_id: int, items: bool):
+async def shopping_list(ctx: click.Context, list_id: int, no_items: bool):
     """Get details for a specific shopping list."""
     client: Kassalapp = ctx.obj["client"]
-    data = await client.get_shopping_list(list_id, include_items=items)
-    data_model = data.model_dump()
-    exclude_keys = ['items']
-    new_d = {k: data_model[k] for k in set(data_model.keys()) - set(exclude_keys)}
-    click.echo(tabulate([new_d], headers="keys", **TABULATE_DEFAULTS))
+    data = await client.get_shopping_list(list_id, include_items=not no_items)
+    data_model = data.to_base_dict()
+    click.echo(
+        tabulate(
+            tabulate_model([data_model], ["id", "title", "created_at"]),
+            headers="firstrow",
+            **TABULATE_DEFAULTS,
+        )
+    )
     click.echo("Items")
-    click.echo(tabulate(data_model['items'], headers="keys", **TABULATE_DEFAULTS))
+    click.echo(
+        tabulate(
+            tabulate_model(data_model["items"], ["id", "checked", "text"]),
+            headers="firstrow",
+            **TABULATE_DEFAULTS,
+        )
+    )
 
 
 @cli.command("shopping-list-items")
@@ -71,7 +99,13 @@ async def shopping_list_items(ctx: click.Context, list_id: int):
     """Get details for a specific shopping list."""
     client: Kassalapp = ctx.obj["client"]
     data = await client.get_shopping_list_items(list_id)
-    click.echo(tabulate([m.model_dump_essentials() for m in data], headers="keys", **TABULATE_DEFAULTS))
+    click.echo(
+        tabulate(
+            tabulate_model([m.to_base_dict() for m in data], ["id", "checked", "text"]),
+            headers="firstrow",
+            **TABULATE_DEFAULTS,
+        )
+    )
 
 
 @cli.command("add-item")
@@ -94,7 +128,7 @@ async def check_item(ctx: click.Context, list_id: int, item_id: int):
     """Mark a shopping list item as checked."""
     client: Kassalapp = ctx.obj["client"]
     response = await client.update_shopping_list_item(list_id, item_id, checked=True)
-    click.echo(response.model_dump())
+    click.echo(response.to_dict())
 
 
 @cli.command("delete-item")
@@ -116,21 +150,40 @@ async def product_search(ctx: click.Context, search: str, count: int):
     """Search for products."""
     client: Kassalapp = ctx.obj["client"]
     results = await client.product_search(search=search, size=count, unique=True)
-    click.echo(tabulate([r.model_dump() for r in results], headers="keys", **TABULATE_DEFAULTS))
+    products = tabulate_model(
+        [r.to_dict() for r in results],
+        [
+            "id",
+            "ean",
+            "name",
+            "image",
+            "current_price",
+        ],
+    )
+    click.echo(tabulate(products, headers="firstrow", **TABULATE_DEFAULTS))
 
 
 @cli.command("store-groups")
 async def store_groups():
     """Get list of available physical store groups."""
-    groups = [g.value for g in PhysicalStoreGroup]
-    groups.sort()
-    click.echo(groups)
+    groups = [str(g) for g in PhysicalStoreGroup]
+    click.echo(tabulate([{"value": v} for v in sorted(groups)], **TABULATE_DEFAULTS))
+
+
+def _parse_proximity(_ctx, _param, value: str):
+    proximity = [c.strip() for c in value.split(",")]
+    if len(proximity) != 3:  # noqa: PLR2004
+        raise click.BadParameter("Proximity must be in the format 'lat,lng,radius'")
+    return ProximitySearch(float(proximity[0]), float(proximity[1]), float(proximity[2]))
 
 
 @cli.command("stores")
-@click.option("--proximity",
-              type=ProximitySearch,
-              help="Proximity of stores to search for (latitude longitude radius)")
+@click.option(
+    "--proximity",
+    type=str,
+    help="Proximity of stores to search for (latitude,longitude,radius)",
+    callback=_parse_proximity,
+)
 @click.option("--group", type=PhysicalStoreGroup)
 @click.argument("search", type=str, required=False)
 @click.option("--count", type=int, help="Number of results to return")
@@ -143,14 +196,20 @@ async def store_search(
     count: int,
 ):
     """Search for physical stores."""
-    proximity_search = None
-    if proximity:
-        lat, lng, radius = proximity
-        proximity_search = ProximitySearch(lat=lat, lng=lng, km=radius)
-
     client: Kassalapp = ctx.obj["client"]
-    results = await client.physical_stores(search=search, group=group, proximity=proximity_search, size=count)
-    click.echo(tabulate([r.model_dump() for r in results], headers="keys", **TABULATE_DEFAULTS))
+    results = await client.physical_stores(search=search, group=group, proximity=proximity, size=count)
+
+    stores = tabulate_model(
+        [r.to_dict() for r in results],
+        [
+            "id",
+            "name",
+            "address",
+            "website",
+            "position",
+        ],
+    )
+    click.echo(tabulate(stores, headers="firstrow", **TABULATE_DEFAULTS))
 
 
 @cli.command("webhooks")
@@ -159,7 +218,10 @@ async def webhooks(ctx: click.Context):
     """Get webhooks."""
     client: Kassalapp = ctx.obj["client"]
     results = await client.get_webhooks()
-    click.echo(tabulate([r.model_dump() for r in results], headers="keys", **TABULATE_DEFAULTS))
+    if len(results) > 0:
+        click.echo(tabulate([r.to_dict() for r in results], headers="keys", **TABULATE_DEFAULTS))
+    else:
+        click.echo("No webhooks defined.")
 
 
 def configure_logging(debug: bool):

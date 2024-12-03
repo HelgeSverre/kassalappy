@@ -1,4 +1,5 @@
 """Constants used by kassalapp."""
+
 from http import HTTPStatus
 from importlib.metadata import version
 from typing import Final

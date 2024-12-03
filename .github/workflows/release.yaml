@@ -43,6 +43,7 @@ jobs:
           version="${version,,}"
           version="${version#v}"
           poetry version --no-interaction "${version}"
+          sed -i "s/0\.0\.0/${version}/" ${{ github.workspace }}/kassalappy/version.py
       - name: 🏗 Build package
         run: poetry build --no-interaction
       - name: 🚀 Publish to PyPi

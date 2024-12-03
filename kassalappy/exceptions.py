@@ -1,4 +1,5 @@
 """Exceptions."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Literal, cast
@@ -26,8 +27,9 @@ class APIError(Exception):
     param: str | None
     type: str | None
 
-    def __init__(self, message: str, request: aiohttp.ClientRequest | aiohttp.RequestInfo, *,
-                 body: object | None) -> None:
+    def __init__(
+        self, message: str, request: aiohttp.ClientRequest | aiohttp.RequestInfo, *, body: object | None
+    ) -> None:
         super().__init__(message)
         self.request = request
         self.message = message
@@ -55,8 +57,9 @@ class APIStatusError(APIError):
 
 
 class APIConnectionError(APIError):
-    def __init__(self, *, message: str = "Connection error.",
-                 request: aiohttp.ClientRequest | aiohttp.RequestInfo) -> None:
+    def __init__(
+        self, *, message: str = "Connection error.", request: aiohttp.ClientRequest | aiohttp.RequestInfo
+    ) -> None:
         super().__init__(message, request, body=None)
 
 
@@ -122,3 +125,7 @@ class RetryableHttpException(HttpException):
 
 class AuthorizationError(FatalHttpException):
     """Invalid login exception."""
+
+
+class ValidationError(ValueError):
+    """Unable to deserialize or validate response data."""

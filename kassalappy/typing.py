@@ -12,6 +12,9 @@ class StrEnum(str, Enum):
     All members are compared via `upper()`. Defaults to UNKNOWN.
     """
 
+    def __str__(self) -> str:
+        return str(self.value)
+
     def __eq__(self, other: str) -> bool:
         other = other.upper()
         return super().__eq__(other)

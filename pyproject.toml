@@ -12,72 +12,96 @@ packages = [
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.10"
-aiohttp = "^3.10.10"
+python = ">=3.10,<3.13"
+aiohttp = "^3.11"
 asyncclick = "^8.1.7.2"
-pydantic = "^2.9.2"
+async-timeout = "^4.0.3"
+mashumaro = {extras = ["orjson"], version = "^3.13.1"}
 tabulate = "^0.9.0"
 
 [tool.poetry.group.dev.dependencies]
-pylint = "3.0.2"
-ruff = "0.1.3"
-pylint-pydantic = "^0.3.0"
+aresponses = "^3.0.0"
+covdefaults = "2.3.0"
+pre-commit = ">=3.8,<5.0"
+pre-commit-hooks = "^5.0.0"
+pylint = "3.3.1"
+pytest = "^8.3.3"
+pytest-asyncio = "*"
+pytest-cov = "^5.0.0"
+ruff = "0.6.9"
 
 [tool.poetry.scripts]
 kassalappy = "kassalappy.cli:cli"
 
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+[tool.coverage.report]
+show_missing = true
+
+[tool.coverage.run]
+plugins = ["covdefaults"]
+source = ["kassalappy"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 
 [tool.ruff]
-ignore = [
-  "ANN101", # Self... explanatory
-  "ANN102",
-  "ANN401", # Opiniated warning on disallowing dynamically typed expressions
-  "ANN201",
-  "ANN204",
-  "A003",
-  "D101",
-  "D107",
-  "D203", # Conflicts with other rules
-  "D213", # Conflicts with other rules
-  "TID252", # Relative imports
-  "RUF012", # Just broken
-  "PLR0913",
-  "FBT001",
-  "FBT002",
-  "D103",
+line-length = 110
 
-  # Formatter conflicts
-  "COM812",
-  "COM819",
-  "D206",
-  "E501",
-  "ISC001",
-  "Q000",
-  "Q001",
-  "Q002",
-  "Q003",
-  "W191",
-  "TRY003",
+[tool.ruff.lint]
+ignore = [
+    "ARG001",
+    "A003", "ANN001", "ANN003", "ANN101", "ANN102", "ANN201", "ANN202", "ANN204", "ANN205", "ANN401",
+    "COM812", "COM819",
+    "D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107", "D202", "D203", "D205", "D206", "D213",
+    "E501", "EM101", "EM102",
+    "ERA001",
+    "FBT001", "FBT002", "FBT003",
+    "FIX002",
+    "G004",
+    "ISC001",
+    "PLR0913",
+    "PTH123",
+    "Q000", "Q001", "Q002", "Q003",
+    "RUF012",
+    "S101",
+    "S105",
+    "S311",
+    "SLOT000",
+    "TD003", "TID252", "TRY003", "TRY300",
+    "W191",
 ]
 select = ["ALL"]
-src = ["kassalappy"]
-
-[tool.ruff.isort]
-force-sort-within-sections = true
-combine-as-imports = true
 
 [tool.pylint."MESSAGES CONTROL"]
 disable = [
-  "format", # handled by ruff
-  "duplicate-code", # unavoidable
-  "used-before-assignment", # false positives with TYPE_CHECKING structures
-  "too-many-arguments",
-  "too-many-return-statements",
-  "broad-exception-caught",
-  "too-few-public-methods",
-  "missing-class-docstring",
-  "missing-function-docstring",
+    "format",
+    "duplicate-code",
+    "used-before-assignment",
+    "too-many-arguments",
+    "too-many-instance-attributes",
+    "too-few-public-methods",
+    "missing-class-docstring",
+    "missing-function-docstring",
+    "missing-module-docstring",
 ]
+
+[tool.ruff.lint.flake8-pytest-style]
+fixture-parentheses = false
+mark-parentheses = false
+
+[tool.ruff.lint.isort]
+force-sort-within-sections = true
+combine-as-imports = true
+known-first-party = ["kassalappy"]
+
+[tool.ruff.lint.flake8-type-checking]
+runtime-evaluated-base-classes = [
+    "mashumaro.mixins.orjson.DataClassORJSONMixin",
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 25
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
