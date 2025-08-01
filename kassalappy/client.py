@@ -327,6 +327,10 @@ class Kassalapp:
         sort: Literal["date_asc", "date_desc", "name_asc", "name_desc", "price_asc", "price_desc"]
         | None = None,
         unique: bool = False,
+        store: str | None = None,
+        has_labels: list[str] | None = None,
+        category: str | None = None,
+        category_id: int | None = None,
     ) -> list[Product]:
         """Search for groceries and various product to find price, ingredients and nutritional information.
 
@@ -344,6 +348,10 @@ class Kassalapp:
         :param sort: Sort the products by a specific criteria.
         :param unique: If true, the product list will be collapsed based on the EAN number of the product;
                        in practice, set this to true if you don't want duplicate results.
+        :param store: Filter products by store code (e.g., "SPAR_NO", "MENY_NO").
+        :param has_labels: Filter products that have the specified labels (e.g., ["euroleaf", "frysevare"]).
+        :param category: Filter products by category name (e.g., "bakeri").
+        :param category_id: Filter products by category ID.
         :return:
         """
         params = {
@@ -358,6 +366,10 @@ class Kassalapp:
             "size": size,
             "sort": sort,
             "unique": 1 if unique is True else None,
+            "store": store,
+            "has_labels": has_labels,
+            "category": category,
+            "category_id": category_id,
         }
 
         return await self.execute(

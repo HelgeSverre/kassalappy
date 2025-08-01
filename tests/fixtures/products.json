@@ -1,0 +1,56 @@
+{
+  "data": [
+    {
+      "id": 1,
+      "name": "Test Product 1",
+      "ean": "1234567890123",
+      "current_price": 29.90,
+      "current_unit_price": 15.50,
+      "brand": "Test Brand",
+      "vendor": "Test Vendor",
+      "store": {
+        "id": 1,
+        "name": "SPAR",
+        "code": "SPAR_NO",
+        "url": "https://spar.no",
+        "logo": null
+      },
+      "category": [
+        {
+          "id": 1,
+          "name": "dairy",
+          "depth": 1
+        }
+      ],
+      "allergens": [],
+      "nutrition": [],
+      "labels": []
+    },
+    {
+      "id": 2,
+      "name": "Test Product 2", 
+      "ean": "1234567890124",
+      "current_price": 19.90,
+      "current_unit_price": 10.50,
+      "brand": "Test Brand 2",
+      "vendor": "Test Vendor 2",
+      "store": {
+        "id": 2,
+        "name": "MENY",
+        "code": "MENY_NO",
+        "url": "https://meny.no",
+        "logo": null
+      },
+      "category": [
+        {
+          "id": 2,
+          "name": "bakery",
+          "depth": 1
+        }
+      ],
+      "allergens": [],
+      "nutrition": [],
+      "labels": []
+    }
+  ]
+}
