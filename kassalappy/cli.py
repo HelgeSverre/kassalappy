@@ -145,11 +145,19 @@ async def delete_item(ctx: click.Context, list_id: int, item_id: int):
 @cli.command("product")
 @click.argument("search", type=str)
 @click.option("--count", type=int, default=5, help="Number of results to return")
+@click.option("--store", type=click.Choice([str(g) for g in PhysicalStoreGroup]), help="Filter by store")
+@click.option("--category", type=str, help="Filter by category name")
 @click.pass_context
-async def product_search(ctx: click.Context, search: str, count: int):
+async def product_search(ctx: click.Context, search: str, count: int, store: str | None, category: str | None):
     """Search for products."""
     client: Kassalapp = ctx.obj["client"]
-    results = await client.product_search(search=search, size=count, unique=True)
+    results = await client.product_search(
+        search=search, 
+        size=count, 
+        unique=True,
+        store=store,
+        category=category,
+    )
     products = tabulate_model(
         [r.to_dict() for r in results],
         [
